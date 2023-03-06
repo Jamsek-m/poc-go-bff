@@ -1,53 +1,28 @@
 package session
 
 import (
-	"fmt"
-	"net/http"
-	"poc-go-bff/session/store"
-	"poc-go-bff/session/store/memory"
-	"sync"
-	"time"
+	"github.com/gorilla/sessions"
+	"github.com/michaeljs1990/sqlitestore"
+	"poc-go-bff/config"
 )
 
-var lock sync.Mutex
+var sessionStore sessions.Store
 
-var sessionStorage store.Store
-
-func GetStore() store.Store {
-	if sessionStorage == nil {
-		lock.Lock()
-		defer lock.Unlock()
-		if sessionStorage != nil {
-			return sessionStorage
-		}
-		sessionStorage = memory.NewSessionStore()
-	}
-	return sessionStorage
-}
-
-func GetSessionFromCookie(cookieName string, req *http.Request) (*store.UserSession, error) {
-	cookie, err := req.Cookie(cookieName)
-	fmt.Println(cookie)
-	if err == nil {
-		sessionId := cookie.Value
-		fmt.Println("Cookie session: ", sessionId)
-		if existingSession := GetStore().Get(sessionId); existingSession != nil {
-			fmt.Println("found session:", existingSession)
-			return existingSession, nil
+func InitSessions() {
+	if config.GetConfig().Sessions.Store == "sqlite3" {
+		sqliteStore, err := sqlitestore.NewSqliteStore("./db.sqlite", "bff_sessions", "/", 3600, []byte(config.GetConfig().Sessions.Secret))
+		if err == nil {
+			sessionStore = sqliteStore
 		} else {
-			fmt.Println("not found session!")
+			panic(err)
 		}
+	} else if config.GetConfig().Sessions.Store == "memory" {
+		sessionStore = sessions.NewCookieStore([]byte(config.GetConfig().Sessions.Secret))
+	} else {
+
 	}
-	return nil, fmt.Errorf("error retrieving session from cookie")
 }
 
-func NewSessionCookie(sessionID string, res http.ResponseWriter) *http.Cookie {
-	return &http.Cookie{
-		Name:     "BFF_ID",
-		Value:    sessionID,
-		Secure:   false,
-		HttpOnly: true,
-		Path:     "/",
-		Expires:  time.Now().Add(365 * 24 * time.Hour),
-	}
+func GetStore() sessions.Store {
+	return sessionStore
 }

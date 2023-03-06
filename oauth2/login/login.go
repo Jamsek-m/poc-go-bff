@@ -1,34 +1,27 @@
 package login
 
 import (
-	"fmt"
 	cv "github.com/nirasan/go-oauth-pkce-code-verifier"
 	"net/http"
 	"net/url"
+	"poc-go-bff/config"
 	"poc-go-bff/session"
-	"poc-go-bff/session/store"
 )
 
 func StartCodeFlow(res http.ResponseWriter, req *http.Request) {
-	existingSession, err := session.GetSessionFromCookie("BFF_ID", req)
-	if existingSession != nil && existingSession.Tokens != nil {
-		http.Redirect(res, req, "https://google.com", http.StatusSeeOther)
+	existingSession, err := session.GetStore().Get(req, config.GetConfig().Sessions.CookieName)
+	if existingSession != nil && existingSession.Values["access_token"] != nil {
+		http.Redirect(res, req, config.GetConfig().Openid.RedirectURL, http.StatusSeeOther)
 		return
 	}
 
-	sessionID, newSession := session.GetStore().Start()
-	sessionCookie := session.NewSessionCookie(sessionID, res)
-	fmt.Println(sessionCookie)
-	http.SetCookie(res, sessionCookie)
-
+	newSession, err := session.GetStore().New(req, config.GetConfig().Sessions.CookieName)
 	verifier, err := cv.CreateCodeVerifierWithLength(80)
 	if err != nil {
 		panic("Error creating verifier!")
 	}
-	newSession.CodeFlow = &store.CodeFlow{
-		Verifier: verifier.Value,
-	}
-	session.GetStore().Update(sessionID, newSession)
+	newSession.Values["verifier"] = verifier.Value
+	newSession.Save(req, res)
 
 	challenge := verifier.CodeChallengeS256()
 

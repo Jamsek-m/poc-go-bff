@@ -1,22 +1,30 @@
 package login
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
+	"poc-go-bff/config"
 	"poc-go-bff/session"
 )
 
 func LogoutUser(res http.ResponseWriter, req *http.Request) {
-	existingSession, _ := session.GetSessionFromCookie("BFF_ID", req)
-	if existingSession != nil && existingSession.Tokens != nil {
+	existingSession, _ := session.GetStore().Get(req, config.GetConfig().Sessions.CookieName)
+	if existingSession != nil && existingSession.Values["access_token"] != nil {
+
+		idToken := existingSession.Values["id_token"].(string)
+
 		params := url.Values{}
-		params.Set("id_token_hint", existingSession.Tokens.IDToken)
-		params.Set("post_logout_redirect_uri", "https://google.com")
+		params.Set("id_token_hint", idToken)
+		params.Set("post_logout_redirect_uri", config.GetConfig().Openid.RedirectURL)
 
-		session.GetStore().Destroy(*existingSession.ID)
+		// Destroys session
+		existingSession.Options.MaxAge = -1
+		existingSession.Save(req, res)
 
-		http.Redirect(res, req, "https://auth.gume1a.com/realms/gume1a-int/protocol/openid-connect/logout?"+params.Encode(), 303)
+		endSessionUrl := fmt.Sprintf("%s?%s", config.GetConfig().Openid.EndSessionURL, params.Encode())
+		http.Redirect(res, req, endSessionUrl, 303)
 	} else {
-		http.Redirect(res, req, "https://google.com", 303)
+		http.Redirect(res, req, config.GetConfig().Openid.RedirectURL, 303)
 	}
 }

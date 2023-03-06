@@ -6,38 +6,39 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"poc-go-bff/config"
 	"poc-go-bff/oauth2"
 	"poc-go-bff/session"
-	"poc-go-bff/session/store"
 	"strings"
 )
 
 func HandleCode(res http.ResponseWriter, req *http.Request) {
-	code := req.URL.Query().Get("code")
+	code := req.URL.Query().Get(oauth2.CodeQueryParam)
 	if code == "" {
-		fmt.Println("Code not found!")
 		res.WriteHeader(http.StatusUnauthorized)
+		res.Header().Add(oauth2.HeaderErrReason, "No code query parameter present!")
 		return
 	}
 
-	existingSession, _ := session.GetSessionFromCookie("BFF_ID", req)
-	if existingSession == nil || existingSession.CodeFlow == nil {
-		fmt.Println("Session/cookie not found!")
+	existingSession, _ := session.GetStore().Get(req, config.GetConfig().Sessions.CookieName)
+	if existingSession == nil || existingSession.Values["verifier"] == nil {
 		res.WriteHeader(http.StatusUnauthorized)
+		res.Header().Add(oauth2.HeaderErrReason, "No active session that started login flow!")
 		return
 	}
 
-	fmt.Println("Preq fulfilled, continue...")
+	verifier := existingSession.Values["verifier"].(string)
+
 	params := url.Values{}
 	params.Set("grant_type", "authorization_code")
 	params.Set("code", code)
-	params.Set("redirect_uri", "http://localhost:5000/oidc/callback")
-	params.Set("scopes", "openid email profile")
-	params.Set("code_verifier", existingSession.CodeFlow.Verifier)
-	params.Set("client_id", "simpl-bff")
-	params.Set("client_secret", "H6srj8ArUZtL0r0ju10Pg3FEQ4MOd9DA")
+	params.Set("redirect_uri", config.GetConfig().Openid.CallbackURL)
+	params.Set("scopes", config.GetConfig().Openid.Scopes)
+	params.Set("code_verifier", verifier)
+	params.Set("client_id", config.GetConfig().Openid.ClientID)
+	params.Set("client_secret", config.GetConfig().Openid.ClientSecret)
 
-	request, _ := http.NewRequest("POST", "https://auth.gume1a.com/realms/gume1a-int/protocol/openid-connect/token", strings.NewReader(params.Encode()))
+	request, _ := http.NewRequest("POST", config.GetConfig().Openid.TokenURL, strings.NewReader(params.Encode()))
 	request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	client := &http.Client{}
@@ -50,17 +51,17 @@ func HandleCode(res http.ResponseWriter, req *http.Request) {
 		data := oauth2.TokenResponse{}
 		_ = json.Unmarshal([]byte(buffer.String()), &data)
 
-		fmt.Println(data)
-		existingSession.Tokens = &store.UserTokens{
-			AccessToken:  data.AccessToken,
-			RefreshToken: data.RefreshToken,
-			IDToken:      data.IDToken,
+		existingSession.Values["access_token"] = data.AccessToken
+		existingSession.Values["refresh_token"] = data.RefreshToken
+		existingSession.Values["id_token"] = data.IDToken
+		if err := existingSession.Save(req, res); err != nil {
+			fmt.Println(err)
 		}
-		session.GetStore().Update(*existingSession.ID, existingSession)
 
-		http.Redirect(res, req, "https://google.com", http.StatusSeeOther)
+		http.Redirect(res, req, config.GetConfig().Openid.RedirectURL, http.StatusSeeOther)
 	} else {
 		fmt.Printf("%d: %v", response.StatusCode, response.Status)
+		res.Header().Add(oauth2.HeaderErrReason, "Error when retrieving tokens!")
 		res.WriteHeader(http.StatusUnauthorized)
 	}
 }
