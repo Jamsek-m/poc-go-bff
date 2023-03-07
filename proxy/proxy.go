@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"poc-go-bff/oauth2"
+	"poc-go-bff/resps"
 	"poc-go-bff/session"
 )
 
@@ -27,14 +27,12 @@ func (p *apiProxy) ProxyHttp(res http.ResponseWriter, req *http.Request) {
 	if accessToken != nil {
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken.(string)))
 	} else {
-		res.WriteHeader(http.StatusUnauthorized)
-		res.Header().Add(oauth2.HeaderErrReason, "No active sessions!")
+		resps.Handle401(res, "No active sessions!")
 	}
 	p.proxy.ServeHTTP(res, req)
 }
 
 func New(URL *url.URL) ApiProxy {
-	fmt.Println("New: ", URL)
 	proxy := httputil.NewSingleHostReverseProxy(URL)
 	defaultDirector := proxy.Director
 
