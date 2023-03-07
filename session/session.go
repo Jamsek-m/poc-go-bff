@@ -1,28 +1,66 @@
 package session
 
 import (
-	"github.com/gorilla/sessions"
-	"github.com/michaeljs1990/sqlitestore"
-	"poc-go-bff/config"
+	"fmt"
+	"github.com/alexedwards/scs/v2"
+	"net/http"
 )
 
-var sessionStore sessions.Store
+type (
+	Store interface {
+		GetSessionValue(req *http.Request, paramName string) interface{}
+		SetSessionValue(req *http.Request, paramName string, value string)
+		CommitSessionChanges(req *http.Request)
+		CreateSession(req *http.Request)
+		DestroySession(req *http.Request) error
+		Instance() *scs.SessionManager
+	}
 
-func InitSessions() {
-	if config.GetConfig().Sessions.Store == "sqlite3" {
-		sqliteStore, err := sqlitestore.NewSqliteStore("./db.sqlite", "bff_sessions", "/", 3600, []byte(config.GetConfig().Sessions.Secret))
-		if err == nil {
-			sessionStore = sqliteStore
-		} else {
-			panic(err)
-		}
-	} else if config.GetConfig().Sessions.Store == "memory" {
-		sessionStore = sessions.NewCookieStore([]byte(config.GetConfig().Sessions.Secret))
-	} else {
+	storeImpl struct {
+		sessionManager scs.SessionManager
+	}
+)
 
+var store Store
+
+func (s *storeImpl) GetSessionValue(req *http.Request, paramName string) interface{} {
+	ctx := req.Context()
+	if s.sessionManager.Exists(ctx, paramName) {
+		return s.sessionManager.Get(ctx, paramName)
+	}
+	return nil
+}
+
+func (s *storeImpl) SetSessionValue(req *http.Request, paramName string, value string) {
+	s.sessionManager.Put(req.Context(), paramName, value)
+}
+
+func (s *storeImpl) CommitSessionChanges(req *http.Request) {
+	_ = s.sessionManager.RenewToken(req.Context())
+}
+
+func (s *storeImpl) CreateSession(req *http.Request) {
+
+}
+
+func (s *storeImpl) DestroySession(req *http.Request) error {
+	if err := s.sessionManager.Destroy(req.Context()); err != nil {
+		return fmt.Errorf("error destroying session: %w", err)
+	}
+	return nil
+}
+
+func (s *storeImpl) Instance() *scs.SessionManager {
+	return &s.sessionManager
+}
+
+func InitStore() {
+	sessionManager := initSessions()
+	store = &storeImpl{
+		sessionManager: *sessionManager,
 	}
 }
 
-func GetStore() sessions.Store {
-	return sessionStore
+func Current() Store {
+	return store
 }

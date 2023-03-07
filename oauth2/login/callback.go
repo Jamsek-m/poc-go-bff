@@ -20,21 +20,19 @@ func HandleCode(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	existingSession, _ := session.GetStore().Get(req, config.GetConfig().Sessions.CookieName)
-	if existingSession == nil || existingSession.Values["verifier"] == nil {
+	verifier := session.Current().GetSessionValue(req, "verifier")
+	if verifier == nil {
 		res.WriteHeader(http.StatusUnauthorized)
 		res.Header().Add(oauth2.HeaderErrReason, "No active session that started login flow!")
 		return
 	}
-
-	verifier := existingSession.Values["verifier"].(string)
 
 	params := url.Values{}
 	params.Set("grant_type", "authorization_code")
 	params.Set("code", code)
 	params.Set("redirect_uri", config.GetConfig().Openid.CallbackURL)
 	params.Set("scopes", config.GetConfig().Openid.Scopes)
-	params.Set("code_verifier", verifier)
+	params.Set("code_verifier", verifier.(string))
 	params.Set("client_id", config.GetConfig().Openid.ClientID)
 	params.Set("client_secret", config.GetConfig().Openid.ClientSecret)
 
@@ -51,12 +49,10 @@ func HandleCode(res http.ResponseWriter, req *http.Request) {
 		data := oauth2.TokenResponse{}
 		_ = json.Unmarshal([]byte(buffer.String()), &data)
 
-		existingSession.Values["access_token"] = data.AccessToken
-		existingSession.Values["refresh_token"] = data.RefreshToken
-		existingSession.Values["id_token"] = data.IDToken
-		if err := existingSession.Save(req, res); err != nil {
-			fmt.Println(err)
-		}
+		session.Current().SetSessionValue(req, "access_token", data.AccessToken)
+		session.Current().SetSessionValue(req, "refresh_token", data.RefreshToken)
+		session.Current().SetSessionValue(req, "id_token", data.IDToken)
+		session.Current().CommitSessionChanges(req)
 
 		http.Redirect(res, req, config.GetConfig().Openid.RedirectURL, http.StatusSeeOther)
 	} else {

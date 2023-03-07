@@ -11,12 +11,11 @@ import (
 )
 
 func GetUserProfile(res http.ResponseWriter, req *http.Request) {
-	existingSession, _ := session.GetStore().Get(req, config.GetConfig().Sessions.CookieName)
-	if existingSession != nil && existingSession.Values["access_token"] != nil {
-		request, _ := http.NewRequest("GET", config.GetConfig().Openid.UserinfoURL, nil)
 
-		accessToken := existingSession.Values["access_token"].(string)
-		request.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+	accessToken := session.Current().GetSessionValue(req, "access_token")
+	if accessToken != nil {
+		request, _ := http.NewRequest("GET", config.GetConfig().Openid.UserinfoURL, nil)
+		request.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken.(string)))
 
 		client := &http.Client{}
 		response, _ := client.Do(request)

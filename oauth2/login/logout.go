@@ -9,22 +9,21 @@ import (
 )
 
 func LogoutUser(res http.ResponseWriter, req *http.Request) {
-	existingSession, _ := session.GetStore().Get(req, config.GetConfig().Sessions.CookieName)
-	if existingSession != nil && existingSession.Values["access_token"] != nil {
 
-		idToken := existingSession.Values["id_token"].(string)
-
+	idToken := session.Current().GetSessionValue(req, "id_token")
+	if idToken != nil {
 		params := url.Values{}
-		params.Set("id_token_hint", idToken)
+		params.Set("id_token_hint", idToken.(string))
 		params.Set("post_logout_redirect_uri", config.GetConfig().Openid.RedirectURL)
 
-		// Destroys session
-		existingSession.Options.MaxAge = -1
-		existingSession.Save(req, res)
+		if err := session.Current().DestroySession(req); err == nil {
+			fmt.Println(err)
+		}
+		session.Current().CommitSessionChanges(req)
 
 		endSessionUrl := fmt.Sprintf("%s?%s", config.GetConfig().Openid.EndSessionURL, params.Encode())
-		http.Redirect(res, req, endSessionUrl, 303)
+		http.Redirect(res, req, endSessionUrl, http.StatusSeeOther)
 	} else {
-		http.Redirect(res, req, config.GetConfig().Openid.RedirectURL, 303)
+		http.Redirect(res, req, config.GetConfig().Openid.RedirectURL, http.StatusSeeOther)
 	}
 }

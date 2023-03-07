@@ -3,7 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 	"log"
 	"net/http"
@@ -22,16 +23,19 @@ func main() {
 	}
 	config.InitConfig()
 
-	session.InitSessions()
+	session.InitStore()
 
-	router := mux.NewRouter().StrictSlash(true)
+	router := chi.NewRouter()
+	router.Use(middleware.RequestID)
+	router.Use(middleware.RealIP)
 
-	router.HandleFunc("/login", login.StartCodeFlow).Methods("GET")
-	router.HandleFunc("/login", login.StartCodeFlow).Methods("GET")
-	router.HandleFunc("/logout", login.LogoutUser).Methods("GET")
-	router.HandleFunc("/profile", profile.GetUserProfile).Methods("GET")
-	router.HandleFunc(config.GetConfig().Openid.CallbackPath, login.HandleCode).Methods("GET")
+	router.Get("/login", login.StartCodeFlow)
+	router.Get("/login", login.StartCodeFlow)
+	router.Get("/logout", login.LogoutUser)
+	router.Get("/profile", profile.GetUserProfile)
+	router.Get(config.GetConfig().Openid.CallbackPath, login.HandleCode)
 
 	addr := fmt.Sprintf("%s:%d", config.GetConfig().Host, config.GetConfig().Port)
-	log.Fatal(http.ListenAndServe(addr, router))
+	sessionHandler := session.Current().Instance().LoadAndSave(router)
+	log.Fatal(http.ListenAndServe(addr, sessionHandler))
 }

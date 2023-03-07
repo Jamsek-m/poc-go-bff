@@ -1,6 +1,7 @@
 package login
 
 import (
+	"fmt"
 	cv "github.com/nirasan/go-oauth-pkce-code-verifier"
 	"net/http"
 	"net/url"
@@ -9,29 +10,30 @@ import (
 )
 
 func StartCodeFlow(res http.ResponseWriter, req *http.Request) {
-	existingSession, err := session.GetStore().Get(req, config.GetConfig().Sessions.CookieName)
-	if existingSession != nil && existingSession.Values["access_token"] != nil {
+	accessToken := session.Current().GetSessionValue(req, "access_token")
+	if accessToken != nil {
 		http.Redirect(res, req, config.GetConfig().Openid.RedirectURL, http.StatusSeeOther)
 		return
 	}
-
-	newSession, err := session.GetStore().New(req, config.GetConfig().Sessions.CookieName)
+	session.Current().CreateSession(req)
 	verifier, err := cv.CreateCodeVerifierWithLength(80)
 	if err != nil {
 		panic("Error creating verifier!")
 	}
-	newSession.Values["verifier"] = verifier.Value
-	newSession.Save(req, res)
+
+	session.Current().SetSessionValue(req, "verifier", verifier.Value)
+	session.Current().CommitSessionChanges(req)
 
 	challenge := verifier.CodeChallengeS256()
 
 	params := url.Values{}
 	params.Set("response_type", "code")
-	params.Set("client_id", "simpl-bff")
-	params.Set("redirect_uri", "http://localhost:5000/oidc/callback")
-	params.Set("scope", "openid email profile")
-	params.Set("code_challenge_method", "S256")
+	params.Set("client_id", config.GetConfig().Openid.ClientID)
+	params.Set("redirect_uri", config.GetConfig().Openid.CallbackURL)
+	params.Set("scope", config.GetConfig().Openid.Scopes)
+	params.Set("code_challenge_method", *config.GetConfig().Openid.PKCEMethod)
 	params.Set("code_challenge", challenge)
 
-	http.Redirect(res, req, "https://auth.gume1a.com/realms/gume1a-int/protocol/openid-connect/auth?"+params.Encode(), 303)
+	authorizationURL := fmt.Sprintf("%s?%s", config.GetConfig().Openid.AuthorizationURL, params.Encode())
+	http.Redirect(res, req, authorizationURL, http.StatusSeeOther)
 }
