@@ -1,18 +1,13 @@
 package profile
 
 import (
-	"fmt"
-	"io"
 	"net/http"
-	"poc-go-bff/config"
-	"poc-go-bff/oauth2"
-	"poc-go-bff/session"
-	"strings"
+	"poc-go-bff/proxy"
 )
 
 func GetUserProfile(res http.ResponseWriter, req *http.Request) {
-
-	accessToken := session.Current().GetSessionValue(req, "access_token")
+	proxy.UserInfoProxy().ProxyHttp(res, req)
+	/*accessToken := session.Current().GetSessionValue(req, "access_token")
 	if accessToken != nil {
 		request, _ := http.NewRequest("GET", config.GetConfig().Openid.UserinfoURL, nil)
 		request.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken.(string)))
@@ -34,5 +29,5 @@ func GetUserProfile(res http.ResponseWriter, req *http.Request) {
 	} else {
 		res.WriteHeader(http.StatusUnauthorized)
 		res.Header().Add(oauth2.HeaderErrReason, "No active sessions!")
-	}
+	}*/
 }
